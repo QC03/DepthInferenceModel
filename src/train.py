@@ -83,7 +83,9 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> floa
 def save_checkpoint(payload: dict[str, Any], checkpoint: Path, epoch: int, retries: int = 5) -> None:
     """Persist a checkpoint while tolerating transient OneDrive/file locks."""
     checkpoint.parent.mkdir(parents=True, exist_ok=True)
-    epoch_path = checkpoint.with_name(f"{checkpoint.stem}.epoch_{epoch:03d}{checkpoint.suffix}")
+    epoch_dir = checkpoint.parent.parent / "epochs"
+    epoch_dir.mkdir(parents=True, exist_ok=True)
+    epoch_path = epoch_dir / f"{checkpoint.stem}.epoch_{epoch:03d}{checkpoint.suffix}"
     torch.save(payload, epoch_path)
     last_error: OSError | None = None
     for attempt in range(retries):
@@ -107,9 +109,9 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--checkpoint", type=Path, default=Path("checkpoints/best_model.pth"))
-    parser.add_argument("--latest-checkpoint", type=Path, default=Path("checkpoints/latest_model.pth"))
-    parser.add_argument("--resume", type=Path, help="Resume from a saved training checkpoint.")
+    parser.add_argument("--checkpoint", type=Path, default=Path("checkpoints/best/best_model.pth"))
+    parser.add_argument("--latest-checkpoint", type=Path, default=Path("checkpoints/latest/latest_model.pth"))
+    parser.add_argument("--new-training", action="store_true", help="Ignore existing checkpoints and start from ImageNet weights.")
     args = parser.parse_args()
     seed_everything(args.seed)
     records = json.loads(args.annotations.read_text(encoding="utf-8"))
@@ -134,10 +136,18 @@ def main() -> None:
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     start_epoch = 0
     best_mae = float("inf")
-    if args.resume:
-        if not args.resume.is_file():
-            raise FileNotFoundError(f"Resume checkpoint not found: {args.resume}")
-        resume_checkpoint = torch.load(args.resume, map_location=device, weights_only=False)
+    resume_path: Path | None = None
+    if not args.new_training:
+        if args.latest_checkpoint.is_file():
+            resume_path = args.latest_checkpoint
+        elif args.checkpoint.is_file():
+            resume_path = args.checkpoint
+        elif Path("checkpoints/latest_model.pth").is_file():
+            resume_path = Path("checkpoints/latest_model.pth")
+        elif Path("checkpoints/best_model.pth").is_file():
+            resume_path = Path("checkpoints/best_model.pth")
+    if resume_path:
+        resume_checkpoint = torch.load(resume_path, map_location=device, weights_only=False)
         if resume_checkpoint.get("num_keypoints") != len(records[0]["relative_depth_gt"]):
             raise ValueError("Resume checkpoint keypoint count does not match the annotation data.")
         model.load_state_dict(resume_checkpoint["model_state"])
@@ -147,7 +157,7 @@ def main() -> None:
             scheduler.load_state_dict(resume_checkpoint["scheduler_state"])
         start_epoch = int(resume_checkpoint.get("epoch", 0))
         best_mae = float(resume_checkpoint.get("best_validation_mae", resume_checkpoint.get("validation_mae", float("inf"))))
-        print(f"Resumed model weights from {args.resume} at epoch {start_epoch}.")
+        print(f"Resumed model weights from {resume_path} at epoch {start_epoch}.")
         if "optimizer_state" not in resume_checkpoint:
             print("Warning: checkpoint has no optimizer/scheduler state; continuing with fresh optimizer state.")
     args.checkpoint.parent.mkdir(parents=True, exist_ok=True)

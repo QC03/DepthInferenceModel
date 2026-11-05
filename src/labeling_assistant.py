@@ -63,7 +63,15 @@ def _draw_text(
         cv2.putText(image, fallback, position, cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
 
 
-def _label_view(image: np.ndarray, points: list[list[float]], depths: list[float], selected: int, processed: int, remaining: int) -> np.ndarray:
+def _label_view(
+    image: np.ndarray,
+    points: list[list[float]],
+    depths: list[float],
+    selected: int,
+    processed: int,
+    remaining: int,
+    status_msg: str = "",
+) -> np.ndarray:
     """Render a fullscreen-friendly labeling view with editable depth values."""
     screen_width, screen_height = 1280, 720
     left_width, panel_height = screen_width // 2, screen_height // 2
@@ -107,7 +115,10 @@ def _label_view(image: np.ndarray, points: list[list[float]], depths: list[float
         cv2.line(left_bottom, zx_p1, zx_p2, (150, 150, 150), 2)
         cv2.line(right_bottom, zy_p1, zy_p2, (150, 150, 150), 2)
     _draw_text(left_top, f"처리: {processed} | 남은 프레임: {remaining}", (18, 58), 18, (0, 255, 255))
-    _draw_text(left_bottom, "1-9 선택 | 드래그: X-Y 이동 | 위/아래 +/-0.01 | W/S +/-0.10", (15, screen_height // 2 - 18), 15, (0, 255, 255))
+    if status_msg:
+        _draw_text(left_top, f"[{status_msg}]", (280, 58), 18, (50, 255, 50))
+    _draw_text(left_bottom, "1-9: 선택 | 드래그: X-Y 이동 | C: 이전 깊이 복사", (15, panel_height - 38), 14, (0, 255, 255))
+    _draw_text(left_bottom, "위/아래: +/-0.01 | W/S: +/-0.10 | Space/Enter: 다음", (15, panel_height - 16), 14, (0, 255, 255))
     return np.vstack((np.hstack((left_top, right_top)), np.hstack((left_bottom, right_bottom))))
 
 
@@ -142,6 +153,7 @@ def create_annotations(input_dir: Path, output_path: Path, interactive: bool = F
     image_paths = sorted(p for p in input_dir.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp"})
     if not image_paths:
         raise FileNotFoundError(f"No images found in {input_dir}")
+    last_depths: list[float] | None = None
     with mp.solutions.pose.Pose(static_image_mode=True, model_complexity=1) as pose:
         for frame_index, image_path in enumerate(image_paths):
             image = cv2.imread(str(image_path))
@@ -158,6 +170,8 @@ def create_annotations(input_dir: Path, output_path: Path, interactive: bool = F
                 selected_state = {"index": 0}
                 edited: set[int] = set()
                 drag_state = {"index": None}
+                status_msg = ""
+                status_timer = 0
                 cv2.namedWindow("Manual Relative Depth Labeling", cv2.WINDOW_NORMAL)
                 cv2.setWindowProperty("Manual Relative Depth Labeling", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
                 def on_mouse(event: int, x: int, y: int, _flags: int, _param: object) -> None:
@@ -182,7 +196,21 @@ def create_annotations(input_dir: Path, output_path: Path, interactive: bool = F
                 cv2.setMouseCallback("Manual Relative Depth Labeling", on_mouse)
                 while True:
                     selected = int(selected_state["index"])
-                    cv2.imshow("Manual Relative Depth Labeling", _label_view(image, points, depths, selected, frame_index + 1, len(image_paths) - frame_index - 1))
+                    display_msg = status_msg if status_timer > 0 else ""
+                    if status_timer > 0:
+                        status_timer -= 1
+                    cv2.imshow(
+                        "Manual Relative Depth Labeling",
+                        _label_view(
+                            image,
+                            points,
+                            depths,
+                            selected,
+                            frame_index + 1,
+                            len(image_paths) - frame_index - 1,
+                            display_msg,
+                        ),
+                    )
                     key = cv2.waitKey(30)
                     if key in (ord("q"), 27):
                         cv2.destroyAllWindows()
@@ -195,10 +223,20 @@ def create_annotations(input_dir: Path, output_path: Path, interactive: bool = F
                     elif key in (ord("s"), 2621440, 63233):
                         depths[selected] -= 0.1 if key == ord("s") else 0.01
                         edited.add(selected)
+                    elif key in (ord("c"), ord("C")):
+                        if last_depths is not None:
+                            depths[:] = list(last_depths)
+                            edited.update(range(len(depths)))
+                            status_msg = "이전 깊이 복사 완료"
+                            status_timer = 40
+                        else:
+                            status_msg = "이전 깊이 기록 없음"
+                            status_timer = 40
                     elif key in (ord(" "), 13, 10):
                         break
                 for edited_index in edited:
                     weights[edited_index] = 1.0
+            last_depths = list(depths)
             records.append(
                 {
                     "image_path": str(image_path.as_posix()),
