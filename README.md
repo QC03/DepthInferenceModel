@@ -21,7 +21,10 @@ python src\labeling_assistant.py --input-dir data\raw_images --interactive
 # 5. 학습: confidence loss + 관절별 3D 길이 min/max penalty
 python src\train.py --annotations data\annotations.json --epochs 30
 
-# 6. 전체화면 추론 및 자동 저장
+# 6. 기존 best_model.pth에서 10 epoch 추가 학습
+python src\train.py --annotations data\annotations.json --epochs 10 --resume checkpoints\best_model.pth
+
+# 7. 전체화면 추론 및 자동 저장
 python src\inference.py resource\kimbumsoo_1.mp4 --checkpoint checkpoints\best_model.pth
 ```
 
@@ -77,6 +80,14 @@ CosineAnnealingLR를 사용합니다. 기본 손실은 confidence-weighted Smoot
 짧거나 길어지는 것을 제한합니다.
 
 검증 weighted MAE가 가장 낮은 모델을 `checkpoints\best_model.pth`에 저장합니다.
+`--resume`을 사용하면 모델 가중치뿐 아니라 epoch, optimizer, scheduler 상태를
+복원하여 지정한 `--epochs`만큼 추가 학습합니다. 매 epoch 최신 상태는
+`checkpoints\latest_model.pth`에 저장되고, 검증 MAE가 개선된 경우에만
+`checkpoints\best_model.pth`가 갱신됩니다. 따라서 중단된 학습을 정확히 이어가려면
+`--resume checkpoints\latest_model.pth`를 사용하고, best 가중치에서 새로
+fine-tuning하려면 `--resume checkpoints\best_model.pth`를 사용합니다. 새로 생성된 체크포인트는
+완전한 이어학습 정보를 포함합니다. 예전에 생성된 체크포인트처럼 optimizer 상태가
+없는 파일도 모델 가중치는 복원되지만 optimizer와 scheduler는 새로 시작합니다.
 OneDrive 동기화나 다른 프로그램이 파일을 잠시 점유해도 epoch별 파일을 먼저
 저장하고 최대 5회 재시도합니다.
 

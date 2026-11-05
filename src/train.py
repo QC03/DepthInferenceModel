@@ -108,6 +108,8 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--checkpoint", type=Path, default=Path("checkpoints/best_model.pth"))
+    parser.add_argument("--latest-checkpoint", type=Path, default=Path("checkpoints/latest_model.pth"))
+    parser.add_argument("--resume", type=Path, help="Resume from a saved training checkpoint.")
     args = parser.parse_args()
     seed_everything(args.seed)
     records = json.loads(args.annotations.read_text(encoding="utf-8"))
@@ -130,9 +132,26 @@ def main() -> None:
     bone_min, bone_max = compute_bone_bounds(records)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    start_epoch = 0
     best_mae = float("inf")
+    if args.resume:
+        if not args.resume.is_file():
+            raise FileNotFoundError(f"Resume checkpoint not found: {args.resume}")
+        resume_checkpoint = torch.load(args.resume, map_location=device, weights_only=False)
+        if resume_checkpoint.get("num_keypoints") != len(records[0]["relative_depth_gt"]):
+            raise ValueError("Resume checkpoint keypoint count does not match the annotation data.")
+        model.load_state_dict(resume_checkpoint["model_state"])
+        if "optimizer_state" in resume_checkpoint:
+            optimizer.load_state_dict(resume_checkpoint["optimizer_state"])
+        if "scheduler_state" in resume_checkpoint:
+            scheduler.load_state_dict(resume_checkpoint["scheduler_state"])
+        start_epoch = int(resume_checkpoint.get("epoch", 0))
+        best_mae = float(resume_checkpoint.get("best_validation_mae", resume_checkpoint.get("validation_mae", float("inf"))))
+        print(f"Resumed model weights from {args.resume} at epoch {start_epoch}.")
+        if "optimizer_state" not in resume_checkpoint:
+            print("Warning: checkpoint has no optimizer/scheduler state; continuing with fresh optimizer state.")
     args.checkpoint.parent.mkdir(parents=True, exist_ok=True)
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(start_epoch + 1, start_epoch + args.epochs + 1):
         model.train()
         for batch in train_loader:
             optimizer.zero_grad(set_to_none=True)
@@ -150,21 +169,24 @@ def main() -> None:
         scheduler.step()
         mae = evaluate(model, validation_loader, device)
         print(f"epoch={epoch:03d} validation_mae={mae:.6f}")
+        payload = {
+            "model_state": model.state_dict(),
+            "num_keypoints": len(records[0]["relative_depth_gt"]),
+            "keypoint_names": records[0].get("keypoint_names"),
+            "validation_mae": mae,
+            "epoch": epoch,
+            "best_validation_mae": min(best_mae, mae),
+            "optimizer_state": optimizer.state_dict(),
+            "scheduler_state": scheduler.state_dict(),
+            "bone_edges": BONE_EDGES,
+            "bone_min": bone_min.tolist(),
+            "bone_max": bone_max.tolist(),
+        }
+        save_checkpoint(payload, args.latest_checkpoint, epoch)
         if mae < best_mae:
             best_mae = mae
-            save_checkpoint(
-                {
-                    "model_state": model.state_dict(),
-                    "num_keypoints": len(records[0]["relative_depth_gt"]),
-                    "keypoint_names": records[0].get("keypoint_names"),
-                    "validation_mae": mae,
-                    "bone_edges": BONE_EDGES,
-                    "bone_min": bone_min.tolist(),
-                    "bone_max": bone_max.tolist(),
-                },
-                args.checkpoint,
-                epoch,
-            )
+            payload["best_validation_mae"] = best_mae
+            save_checkpoint(payload, args.checkpoint, epoch)
     print(f"Best checkpoint: {args.checkpoint} (MAE={best_mae:.6f})")
 
 

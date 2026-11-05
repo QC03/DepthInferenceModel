@@ -116,6 +116,7 @@ def main() -> None:
         ok, frame = capture.read()
         if not ok:
             break
+        frame = _rotate_frame(frame, rotation)
         result = pose.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         depths = predict(model, frame, device)
         view = compose_view(frame, depths, result.pose_landmarks, screen_size)
