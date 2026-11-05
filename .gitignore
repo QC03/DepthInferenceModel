@@ -5,3 +5,4 @@ __pycache__/
 .vscode/
 *.mp4
 *.jpg
+*.pth
