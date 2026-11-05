@@ -1,8 +1,18 @@
-torch==2.5.1
-torchvision==0.20.1
-opencv-python==4.10.0.84
-mediapipe==0.10.14
-numpy==1.26.4
-albumentations==1.4.18
-matplotlib==3.9.2
-Pillow==11.0.0
+# Keep the original, tested set for existing PCs.
+torch==2.5.1; python_version < "3.14"
+torchvision==0.20.1; python_version < "3.14"
+opencv-python==4.10.0.84; python_version < "3.14"
+mediapipe==0.10.14; python_version < "3.14"
+numpy==1.26.4; python_version < "3.14"
+albumentations==1.4.18; python_version < "3.14"
+matplotlib==3.9.2; python_version < "3.14"
+Pillow==11.0.0; python_version < "3.14"
+
+# Python 3.14-compatible wheels for newer PCs.
+torch==2.9.0; python_version >= "3.14"
+torchvision==0.24.0; python_version >= "3.14"
+mediapipe==0.10.35; python_version >= "3.14"
+numpy==2.3.5; python_version >= "3.14"
+albumentations==1.4.18; python_version >= "3.14"
+matplotlib==3.11.2; python_version >= "3.14"
+Pillow==12.0.0; python_version >= "3.14"

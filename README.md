@@ -6,18 +6,23 @@
 ## 사용법 타임라인
 
 ```powershell
-# 1. 의존성 설치
+# 1. 가상환경 생성 및 활성화 (권장)
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+# 2. 의존성 설치
 python -m pip install -r requirements.txt
 
-# 2. 샘플 영상에서 프레임 추출
+# 3. 샘플 영상에서 프레임 추출
 python src\extract_frames.py resource\kimbumsoo_1.mp4 --output-dir data\raw_images --every-n-frames 6
 
-# 3. MediaPipe 초기 라벨 생성
+# 4. MediaPipe 초기 라벨 생성
 python src\labeling_assistant.py --input-dir data\raw_images
 
-# 4. 전체화면 수동 라벨링
+# 5. 전체화면 수동 라벨링
 python src\labeling_assistant.py --input-dir data\raw_images --interactive
 
+<<<<<<< Updated upstream
 # 5. 기본값: 최신 체크포인트에서 연속학습
 python src\train.py --annotations data\annotations.json --epochs 30
 
@@ -26,7 +31,19 @@ python src\train.py --annotations data\annotations.json --epochs 30 --new-traini
 
 # 7. 전체화면 추론 및 자동 저장
 python src\inference.py resource\kimbumsoo_1.mp4 --checkpoint checkpoints\best\best_model.pth
+=======
+# 6. 학습: confidence loss + 관절별 3D 길이 min/max penalty
+python src\train.py --annotations data\annotations.json --epochs 30
+
+# 7. 전체화면 추론 및 자동 저장
+python src\inference.py resource\kimbumsoo_1.mp4 --checkpoint checkpoints\best_model.pth
+>>>>>>> Stashed changes
 ```
+
+`requirements.txt`는 Python 버전에 따라 의존성을 자동으로 선택합니다.
+기존 PC(Python 3.13 이하)는 기존 버전을 그대로 사용하고, Python 3.14 이상은
+해당 버전에서 제공되는 PyTorch/MediaPipe/Matplotlib 휠을 사용합니다. 따라서
+기존 PC의 가상환경을 삭제하거나 패키지를 업그레이드할 필요가 없습니다.
 
 추론 결과는 `output\result_1.mp4`, `output\result_2.mp4`처럼 자동 저장됩니다.
 소스 Python 파일은 모두 `src\` 폴더에 있습니다.
