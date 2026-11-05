@@ -6,3 +6,5 @@ __pycache__/
 *.mp4
 *.jpg
 *.pth
+
+annotations.json
