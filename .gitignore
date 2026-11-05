@@ -3,6 +3,7 @@ __pycache__/
 
 .venv/
 .vscode/
+.cache/
 *.mp4
 *.jpg
 *.pth

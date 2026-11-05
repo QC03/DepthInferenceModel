@@ -22,7 +22,6 @@ python src\labeling_assistant.py --input-dir data\raw_images
 # 5. 전체화면 수동 라벨링
 python src\labeling_assistant.py --input-dir data\raw_images --interactive
 
-<<<<<<< Updated upstream
 # 5. 기본값: 최신 체크포인트에서 연속학습
 python src\train.py --annotations data\annotations.json --epochs 30
 
@@ -31,19 +30,14 @@ python src\train.py --annotations data\annotations.json --epochs 30 --new-traini
 
 # 7. 전체화면 추론 및 자동 저장
 python src\inference.py resource\kimbumsoo_1.mp4 --checkpoint checkpoints\best\best_model.pth
-=======
-# 6. 학습: confidence loss + 관절별 3D 길이 min/max penalty
-python src\train.py --annotations data\annotations.json --epochs 30
-
-# 7. 전체화면 추론 및 자동 저장
-python src\inference.py resource\kimbumsoo_1.mp4 --checkpoint checkpoints\best_model.pth
->>>>>>> Stashed changes
 ```
 
 `requirements.txt`는 Python 버전에 따라 의존성을 자동으로 선택합니다.
 기존 PC(Python 3.13 이하)는 기존 버전을 그대로 사용하고, Python 3.14 이상은
 해당 버전에서 제공되는 PyTorch/MediaPipe/Matplotlib 휠을 사용합니다. 따라서
 기존 PC의 가상환경을 삭제하거나 패키지를 업그레이드할 필요가 없습니다.
+Python 3.14 이상에서 라벨링 또는 추론을 처음 실행할 때는 MediaPipe Pose 모델을
+자동으로 한 번 다운로드하므로 인터넷 연결이 필요합니다.
 
 추론 결과는 `output\result_1.mp4`, `output\result_2.mp4`처럼 자동 저장됩니다.
 소스 Python 파일은 모두 `src\` 폴더에 있습니다.

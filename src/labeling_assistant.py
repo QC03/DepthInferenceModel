@@ -13,9 +13,10 @@ from pathlib import Path
 from typing import Any
 
 import cv2
-import mediapipe as mp
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+
+from pose_compat import PoseEstimator
 
 KEYPOINT_NAMES = [
     "nose",
@@ -31,8 +32,15 @@ KEYPOINT_NAMES = [
 KOREAN_NAMES = ["코", "왼쪽 어깨", "오른쪽 어깨", "왼쪽 팔꿈치", "오른쪽 팔꿈치", "왼쪽 손목", "오른쪽 손목", "왼쪽 골반", "오른쪽 골반"]
 SKELETON = [(0, 1), (0, 2), (1, 2), (1, 3), (2, 4), (3, 5), (4, 6), (1, 7), (2, 8), (7, 8)]
 LANDMARK_INDEX = {
-    name: getattr(mp.solutions.pose.PoseLandmark, name.upper()).value
-    for name in KEYPOINT_NAMES
+    "nose": 0,
+    "left_shoulder": 11,
+    "right_shoulder": 12,
+    "left_elbow": 13,
+    "right_elbow": 14,
+    "left_wrist": 15,
+    "right_wrist": 16,
+    "left_hip": 23,
+    "right_hip": 24,
 }
 
 
@@ -154,7 +162,7 @@ def create_annotations(input_dir: Path, output_path: Path, interactive: bool = F
     if not image_paths:
         raise FileNotFoundError(f"No images found in {input_dir}")
     last_depths: list[float] | None = None
-    with mp.solutions.pose.Pose(static_image_mode=True, model_complexity=1) as pose:
+    with PoseEstimator(static_image_mode=True, model_complexity=1) as pose:
         for frame_index, image_path in enumerate(image_paths):
             image = cv2.imread(str(image_path))
             if image is None:

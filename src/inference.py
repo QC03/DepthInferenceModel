@@ -6,11 +6,11 @@ import argparse
 from pathlib import Path
 
 import cv2
-import mediapipe as mp
 import numpy as np
 import torch
 
 from model import ResNet18RelativeDepthEstimator
+from pose_compat import PoseEstimator
 
 KEYPOINT_NAMES = ["nose", "left_shoulder", "right_shoulder", "left_elbow", "right_elbow", "left_wrist", "right_wrist", "left_hip", "right_hip"]
 MEDIAPIPE_INDICES = [0, 11, 12, 13, 14, 15, 16, 23, 24]
@@ -99,7 +99,7 @@ def main() -> None:
     model = ResNet18RelativeDepthEstimator(checkpoint["num_keypoints"], pretrained=False).to(device)
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
-    pose = mp.solutions.pose.Pose(static_image_mode=False, model_complexity=1)
+    pose = PoseEstimator(static_image_mode=False, model_complexity=1)
     capture = cv2.VideoCapture(str(args.input))
     if not capture.isOpened():
         raise FileNotFoundError(f"Unable to open {args.input}")
