@@ -49,10 +49,13 @@ ffmpeg -i resource\kimbumsoo_1.mp4 -vf "fps=5" data\raw_images\frame_%04d.jpg
 python src\labeling_assistant.py --input-dir data\raw_images --interactive
 ```
 
-전체화면 UI는 왼쪽에 원본 이미지, 오른쪽 상단에 X-Y 스켈레톤, 오른쪽
-하단에 Z-Y 상대 깊이 편집기를 표시합니다.
+전체화면 UI는 2×2 패널로 구성됩니다. 좌측 상단은 원본 이미지 위에 X-Y
+스켈레톤을 겹쳐 표시하고, 좌측 하단은 Z-X 스켈레톤, 우측 상단은 확대된
+X-Y 스켈레톤, 우측 하단은 Z-Y 상대 깊이 편집기를 표시합니다. 랜드마크
+이름은 한국어로 표시되며 좌측 상단에 처리 프레임 수와 남은 프레임 수가 표시됩니다.
 
 - `1~9`: 키포인트 선택
+- 좌측 상단 랜드마크를 마우스로 드래그: X-Y 좌표 수정
 - 위/아래 방향키: 선택된 깊이 `+/-0.01`
 - `w/s`: 선택된 깊이 `+/-0.10`
 - `Space` 또는 `Enter`: 현재 라벨 저장 후 다음 이미지
