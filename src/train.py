@@ -18,6 +18,8 @@ from torch.utils.data import DataLoader, Subset
 from dataset import TopBodyDepthDataset
 from model import ResNet18RelativeDepthEstimator
 
+BONE_EDGES = [(0, 1), (0, 2), (1, 2), (1, 3), (2, 4), (3, 5), (4, 6), (1, 7), (2, 8), (7, 8)]
+
 
 def seed_everything(seed: int) -> None:
     """Seed Python, NumPy, and PyTorch for repeatable experiments."""
@@ -27,10 +29,41 @@ def seed_everything(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
-def weighted_smooth_l1(prediction: Tensor, target: Tensor, weight: Tensor) -> Tensor:
-    """Compute Smooth L1 averaged over valid, confidence-weighted keypoints."""
+def _bone_lengths(keypoints_2d: Tensor, depth: Tensor) -> Tensor:
+    """Return one normalized 3D length for each configured skeleton edge."""
+    xyz = torch.cat((keypoints_2d, depth.unsqueeze(-1)), dim=-1)
+    return torch.stack([torch.linalg.vector_norm(xyz[:, start] - xyz[:, end], dim=-1) for start, end in BONE_EDGES], dim=-1)
+
+
+def compute_bone_bounds(records: list[dict[str, object]], margin: float = 0.15) -> tuple[Tensor, Tensor]:
+    """Estimate per-bone min/max lengths from labels with a safety margin."""
+    lengths: list[Tensor] = []
+    for record in records:
+        points = torch.tensor(record["keypoints_2d"], dtype=torch.float32)
+        depth = torch.tensor(record["relative_depth_gt"], dtype=torch.float32)
+        lengths.append(_bone_lengths(points.unsqueeze(0), depth.unsqueeze(0)).squeeze(0))
+    values = torch.stack(lengths)
+    minimum = values.min(dim=0).values * (1.0 - margin)
+    maximum = values.max(dim=0).values * (1.0 + margin)
+    return minimum, maximum
+
+
+def weighted_smooth_l1(
+    prediction: Tensor,
+    target: Tensor,
+    weight: Tensor,
+    keypoints_2d: Tensor,
+    bone_min: Tensor,
+    bone_max: Tensor,
+    bone_loss_weight: float = 0.2,
+) -> Tensor:
+    """Combine confidence-weighted depth loss with bone-length range penalties."""
     loss = nn.functional.smooth_l1_loss(prediction, target, reduction="none")
-    return (loss * weight).sum() / weight.sum().clamp_min(1e-8)
+    depth_loss = (loss * weight).sum() / weight.sum().clamp_min(1e-8)
+    lengths = _bone_lengths(keypoints_2d, prediction)
+    range_penalty = torch.relu(bone_min.to(lengths.device) - lengths).square()
+    range_penalty += torch.relu(lengths - bone_max.to(lengths.device)).square()
+    return depth_loss + bone_loss_weight * range_penalty.mean()
 
 
 @torch.no_grad()
@@ -94,6 +127,7 @@ def main() -> None:
     validation_loader = DataLoader(Subset(validation_set, validation_indices), batch_size=args.batch_size)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = ResNet18RelativeDepthEstimator(len(records[0]["relative_depth_gt"])).to(device)
+    bone_min, bone_max = compute_bone_bounds(records)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     best_mae = float("inf")
@@ -103,7 +137,14 @@ def main() -> None:
         for batch in train_loader:
             optimizer.zero_grad(set_to_none=True)
             prediction = model(batch["image"].to(device))
-            loss = weighted_smooth_l1(prediction, batch["depth_gt"].to(device), batch["mask"].to(device))
+            loss = weighted_smooth_l1(
+                prediction,
+                batch["depth_gt"].to(device),
+                batch["mask"].to(device),
+                batch["keypoints_2d"].to(device),
+                bone_min,
+                bone_max,
+            )
             loss.backward()
             optimizer.step()
         scheduler.step()
@@ -117,6 +158,9 @@ def main() -> None:
                     "num_keypoints": len(records[0]["relative_depth_gt"]),
                     "keypoint_names": records[0].get("keypoint_names"),
                     "validation_mae": mae,
+                    "bone_edges": BONE_EDGES,
+                    "bone_min": bone_min.tolist(),
+                    "bone_max": bone_max.tolist(),
                 },
                 args.checkpoint,
                 epoch,

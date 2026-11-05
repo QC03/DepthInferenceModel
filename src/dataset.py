@@ -76,7 +76,8 @@ class TopBodyDepthDataset(Dataset[dict[str, Tensor]]):
         image_tensor = torch.from_numpy(image.transpose(2, 0, 1)).float().div(255.0)
         image_tensor = (image_tensor - 0.5) / 0.5
         depth = torch.tensor(record["relative_depth_gt"], dtype=torch.float32)
+        keypoints_2d = torch.tensor(record["keypoints_2d"], dtype=torch.float32)
         weights = torch.tensor(record.get("confidence_weights", [1.0] * len(depth)), dtype=torch.float32)
-        if depth.numel() != weights.numel():
-            raise ValueError(f"Depth/weight length mismatch at annotation {index}.")
-        return {"image": image_tensor, "depth_gt": depth, "mask": weights}
+        if depth.numel() != weights.numel() or keypoints_2d.shape != (depth.numel(), 2):
+            raise ValueError(f"Keypoint/depth/weight length mismatch at annotation {index}.")
+        return {"image": image_tensor, "depth_gt": depth, "keypoints_2d": keypoints_2d, "mask": weights}
